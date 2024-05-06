@@ -62,7 +62,7 @@ if file is not None:
         llm = ChatOpenAI(
             openai_api_key = OPENAI_API_KEY,
             temperature = 0,
-            max_tokens = 200,
+            max_tokens = 500,
             model_name = "gpt-3.5-turbo"
         )
 
