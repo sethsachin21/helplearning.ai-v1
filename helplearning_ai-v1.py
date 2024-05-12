@@ -41,6 +41,17 @@ def count_words(text):
     words = text.split()
     return len(words)
 
+def process_pdf(file):
+    try:
+        pdf_reader = PdfReader(file)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+        return text
+    except Exception as e:
+        st.error(f"An error occurred while processing the PDF file: {e}")
+        return None
+
 
 OPENAI_API_KEY = st.secrets['llm_api_key']
 
@@ -49,51 +60,53 @@ st.header("helplearning.ai")
 
 with st.sidebar:
     st.title("Your Documents")
-    file = st.file_uploader("Upload a PDF file and start asking questions", type="pdf")
+    files = st.file_uploader("Upload PDF files and start asking questions", accept_multiple_files=True, type="pdf")
 
 # Extract the text
-if file is not None:
-    try:
-        pdf_reader = PdfReader(file)
-        text = ""
-        for page in pdf_reader.pages:
-            text += page.extract_text()
+if files:
+        texts = [process_pdf(file) for file in files if file is not None]
+        texts = [text for text in texts if text is not None]  # Remove None values
 
-        # Break it into chunks
-        text_splitter = RecursiveCharacterTextSplitter(
-            separators="\n",
-            chunk_size=200,
-            chunk_overlap=50,
-            length_function=len
-        )
-        chunks = text_splitter.split_text(text)
+        if texts:
+            try:
+                # Concatenate all texts into a single string
+                all_text = "\n".join(texts)
 
-        # Generating embeddings
-        embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+                # Break it into chunks
+                text_splitter = RecursiveCharacterTextSplitter(
+                    separators="\n",
+                    chunk_size=200,
+                    chunk_overlap=50,
+                    length_function=len
+                )
+                chunks = text_splitter.split_text(all_text)
 
-        # Creating vector store - FAISS
-        vector_store = FAISS.from_texts(chunks, embeddings)
+                # Generating embeddings
+                embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
-        # Get user question
-        user_question = st.text_input("Type Your question here")
+                # Creating vector store - FAISS
+                vector_store = FAISS.from_texts(chunks, embeddings)
 
-        # Do similarity search
-        if user_question:
-            match = vector_store.similarity_search(user_question)
+                # Get user question
+                user_question = st.text_input("Type Your question here")
 
-            # Define the LLM
-            llm = ChatOpenAI(
-                openai_api_key=OPENAI_API_KEY,
-                temperature=0,
-                max_tokens=500,
-                model_name="gpt-3.5-turbo"
-            )
+                # Do similarity search
+                if user_question:
+                    match = vector_store.similarity_search(user_question)
 
-            # Output results
-            # Chain -> take the question, get relevant document, pass it to the LLM, generate the output
-            chain = load_qa_chain(llm, chain_type="stuff")
-            response = chain.run(input_documents=match, question=user_question)
-            log_question_and_answer(user_question, response)
+                    # Define the LLM
+                    llm = ChatOpenAI(
+                        openai_api_key=OPENAI_API_KEY,
+                        temperature=0,
+                        max_tokens=500,
+                        model_name="gpt-3.5-turbo"
+                    )
 
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
+                    # Output results
+                    # Chain -> take the question, get relevant document, pass it to the LLM, generate the output
+                    chain = load_qa_chain(llm, chain_type="stuff")
+                    response = chain.run(input_documents=match, question=user_question)
+                    log_question_and_answer(user_question, response)
+
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
